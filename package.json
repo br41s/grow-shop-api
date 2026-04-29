@@ -1,4 +1,3 @@
-cat > ~/VSCODE/grow-shop/grow-shop-api/package.json << 'EOF'
 {
   "name": "grow-shop-api",
   "version": "1.0.0",
@@ -14,4 +13,3 @@ cat > ~/VSCODE/grow-shop/grow-shop-api/package.json << 'EOF'
     "node": "20"
   }
 }
-EOF
