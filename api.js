@@ -7,30 +7,64 @@ app.use(cors());
 app.use(express.json());
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+const TO_EMAIL = process.env.TO_EMAIL || 'braisn@gmail.com';
 
-app.post('/api/contact', async (req, res) => {
-  const { name, email, message } = req.body;
+app.get('/health', (req, res) => res.json({ ok: true }));
+
+app.post('/api/submit-offer', async (req, res) => {
+  const { name, email, offer, message } = req.body;
+
+  if (!name || !email) {
+    return res.status(400).json({ error: 'Name and email are required' });
+  }
+
+  const htmlToOwner = `
+    <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1f1c">
+      <h2 style="color:#1a6b3c">Nueva oferta — grow-shop.com</h2>
+      <table style="border-collapse:collapse;width:100%;font-size:15px">
+        <tr><td style="padding:10px 12px;border:1px solid #ddd;font-weight:600;background:#f5faf7;width:100px">Nombre</td>
+            <td style="padding:10px 12px;border:1px solid #ddd">${name}</td></tr>
+        <tr><td style="padding:10px 12px;border:1px solid #ddd;font-weight:600;background:#f5faf7">Email</td>
+            <td style="padding:10px 12px;border:1px solid #ddd"><a href="mailto:${email}">${email}</a></td></tr>
+        <tr><td style="padding:10px 12px;border:1px solid #ddd;font-weight:600;background:#f5faf7">Oferta</td>
+            <td style="padding:10px 12px;border:1px solid #ddd;font-size:18px;font-weight:700;color:#1a6b3c">${offer || 'No especificada'}</td></tr>
+        <tr><td style="padding:10px 12px;border:1px solid #ddd;font-weight:600;background:#f5faf7">Mensaje</td>
+            <td style="padding:10px 12px;border:1px solid #ddd">${message || '—'}</td></tr>
+      </table>
+      <p style="margin-top:1.5rem;font-size:12px;color:#9aab9f">Enviado desde el formulario de grow-shop.com</p>
+    </div>`;
+
+  const htmlToUser = `
+    <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1f1c">
+      <h2 style="color:#1a6b3c">Hemos recibido tu oferta</h2>
+      <p>Hola ${name}, gracias por tu interés en grow-shop.com.</p>
+      <p>Hemos recibido tu oferta de <strong>${offer || 'precio a negociar'}</strong> y te responderemos lo antes posible.</p>
+      <p style="margin-top:2rem;font-size:13px;color:#9aab9f">— El equipo de grow-shop.com</p>
+    </div>`;
+
   try {
-    // Email a vosotros
+    // Email al dueño
     await resend.emails.send({
       from: 'contacto@grow-shop.com',
-      to: 'vuestro@email.com',
-      subject: `Nuevo mensaje de ${name}`,
-      html: `<p><b>Nombre:</b> ${name}</p>
-             <p><b>Email:</b> ${email}</p>
-             <p><b>Mensaje:</b> ${message}</p>`
+      to: [TO_EMAIL],
+      subject: `Nueva oferta de ${name} — grow-shop.com`,
+      html: htmlToOwner
     });
+
     // Confirmación al usuario
     await resend.emails.send({
       from: 'contacto@grow-shop.com',
-      to: email,
-      subject: 'Hemos recibido tu mensaje - Grow Shop',
-      html: `<p>Hola ${name}, gracias por contactarnos. Te responderemos pronto.</p>`
+      to: [email],
+      subject: 'Hemos recibido tu oferta — grow-shop.com',
+      html: htmlToUser
     });
+
     res.json({ success: true });
   } catch (err) {
+    console.error('Resend error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.listen(process.env.PORT || 3000);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`API running on port ${PORT}`));
