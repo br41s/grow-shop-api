@@ -6,7 +6,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.ZEABUR_EMAIL_API_KEY;
+if (!RESEND_API_KEY) {
+  console.error('Missing Resend API key. Set RESEND_API_KEY or ZEABUR_EMAIL_API_KEY.');
+  process.exit(1);
+}
+const resend = new Resend(RESEND_API_KEY);
 const TO_EMAIL = process.env.TO_EMAIL || 'braisn@gmail.com';
 
 app.get('/health', (req, res) => res.json({ ok: true }));
