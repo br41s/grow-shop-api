@@ -14,13 +14,38 @@ if (!RESEND_API_KEY) {
 const resend = new Resend(RESEND_API_KEY);
 const TO_EMAIL = process.env.TO_EMAIL || 'braisn@gmail.com';
 
+const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY;
+if (!TURNSTILE_SECRET_KEY) {
+  console.error('Missing Turnstile secret key. Set TURNSTILE_SECRET_KEY.');
+  process.exit(1);
+}
+
+async function verifyTurnstile(token, remoteip) {
+  const params = new URLSearchParams();
+  params.append('secret', TURNSTILE_SECRET_KEY);
+  params.append('response', token || '');
+  if (remoteip) params.append('remoteip', remoteip);
+
+  const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST',
+    body: params
+  });
+  const data = await verifyRes.json();
+  return data.success === true;
+}
+
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 app.post('/api/submit-offer', async (req, res) => {
-  const { name, email, offer, message } = req.body;
+  const { name, email, offer, message, turnstileToken } = req.body;
 
   if (!name || !email) {
     return res.status(400).json({ error: 'Name and email are required' });
+  }
+
+  const humanVerified = await verifyTurnstile(turnstileToken, req.ip).catch(() => false);
+  if (!humanVerified) {
+    return res.status(400).json({ error: 'Verification failed. Please try again.' });
   }
 
   const htmlToOwner = `
