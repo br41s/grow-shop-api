@@ -3,6 +3,10 @@ const cors = require('cors');
 const { Resend } = require('resend');
 
 const app = express();
+// Traefik is the one proxy in front and sets X-Forwarded-For to the caller, so
+// req.ip is the visitor. If Cloudflare ever proxies this host, req.ip becomes
+// one of its edges and remoteip below must change.
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 
@@ -20,6 +24,8 @@ if (!TURNSTILE_SECRET_KEY) {
   process.exit(1);
 }
 
+const TURNSTILE_HOSTNAMES = new Set(['grow-shop.com', 'www.grow-shop.com']);
+
 async function verifyTurnstile(token, remoteip) {
   const params = new URLSearchParams();
   params.append('secret', TURNSTILE_SECRET_KEY);
@@ -28,10 +34,21 @@ async function verifyTurnstile(token, remoteip) {
 
   const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
     method: 'POST',
-    body: params
+    body: params,
+    signal: AbortSignal.timeout(5000)
   });
   const data = await verifyRes.json();
-  return data.success === true;
+  // Logged because the visitor only sees "try again": without this, a wrong
+  // hostname list would lose real offers with no trace.
+  if (data.success !== true) {
+    console.warn('Turnstile rejected the token:', data['error-codes']);
+    return false;
+  }
+  if (!TURNSTILE_HOSTNAMES.has(data.hostname)) {
+    console.warn('Turnstile token from an unexpected hostname:', data.hostname);
+    return false;
+  }
+  return true;
 }
 
 app.get('/health', (req, res) => res.json({ ok: true }));
@@ -43,7 +60,10 @@ app.post('/api/submit-offer', async (req, res) => {
     return res.status(400).json({ error: 'Name and email are required' });
   }
 
-  const humanVerified = await verifyTurnstile(turnstileToken, req.ip).catch(() => false);
+  const humanVerified = await verifyTurnstile(turnstileToken, req.ip).catch((err) => {
+    console.error('Turnstile check failed:', err.message);
+    return false;
+  });
   if (!humanVerified) {
     return res.status(400).json({ error: 'Verification failed. Please try again.' });
   }
@@ -96,5 +116,9 @@ app.post('/api/submit-offer', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`API running on port ${PORT}`));
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => console.log(`API running on port ${PORT}`));
+}
+
+module.exports = { app };
